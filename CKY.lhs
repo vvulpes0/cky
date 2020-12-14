@@ -10,6 +10,7 @@
 > module CKY where
 
 > import Data.Bifunctor
+> import Data.List (foldl')
 > import Data.Set (Set)
 > import qualified Data.Set as Set
 
@@ -85,9 +86,9 @@ we'll also define an Extractable class.
 >     fmap f (Weighted w x) = Weighted w (f x)
 > instance Bifunctor Weighted where
 >     bimap f g (Weighted w x) = Weighted (f w) (g x)
-> instance Num w => Applicative (Weighted w) where
->     pure x = Weighted 1 x
->     Weighted w1 f <*> Weighted w2 x = Weighted (w1 * w2) (f x)
+> instance Monoid w => Applicative (Weighted w) where
+>     pure x = Weighted mempty x
+>     Weighted w1 f <*> Weighted w2 x = Weighted (w1 <> w2) (f x)
 
 Arbitrary weights are not conducive to simple processing;
 here we define an idempotent function
@@ -146,17 +147,18 @@ Only those that end in the right nonterminals are "valid".
  [a] -> [b ]    -> [c ]
         [ab][a]    [bc][b ]
                    [ac][ab][a ]
- 
+
 > ckyExtend :: (Applicative f, Extractable f, Eq n, Eq t) =>
->              Grammar f n t -> t -> [[Forest f n t]] -> [[Forest f n t]]
-> ckyExtend g a xs = zipWith (:) nexts ([] : xs)
->     where nexts = leafen g a : map (concat . f) [0..]
->           f n = zipWith (combineCells g) (take (n + 1) nexts) (xs!!n)
+>              Grammar f n t -> [[Forest f n t]] -> t -> [[Forest f n t]]
+> ckyExtend g xs a = zipWith (:) nexts ([] : xs)
+>     where nexts = leafen g a
+>                   : map (concat . zipWith ccs nexts) xs
+>           ccs = flip (combineCells g)
 
 > ckyParse :: (Applicative f, Extractable f, Ord n, Eq t) =>
 >             Grammar f n t -> Set n -> [t] -> Forest f n t
 > ckyParse g term = filter (flip Set.member term . root . extract)
->                   . f . foldr (ckyExtend g) []
+>                   . f . foldl' (ckyExtend g) []
 >     where f [] = []
 >           f xs = case last xs of
 >                    [] -> []
